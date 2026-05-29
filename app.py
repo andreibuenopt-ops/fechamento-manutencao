@@ -63,7 +63,7 @@ def processar_dados(df_horas_raw, df_mov_raw, horas_mes):
     total_h   = df['UTT'].sum()
     total_os  = df['P_ORDEM'].nunique()
     total_tec = df['NP'].nunique()
-    total_mat = df_custo['CME_TOTAL'].sum()
+    total_mat = df_custo['CMEC_TOTAL'].sum()
     cap_total = total_tec * horas_mes
 
     tipo_h = df.groupby('TIPO')['UTT'].sum()
@@ -90,7 +90,7 @@ def processar_dados(df_horas_raw, df_mov_raw, horas_mes):
 
     eq_h    = df.groupby('cod')['UTT'].sum().reset_index()
     eq_info = df.drop_duplicates('cod')[['cod','DESCRICAO','TIPO']]
-    custo_eq= df_custo.groupby('__COLUMN1')['CME_TOTAL'].sum().reset_index()
+    custo_eq= df_custo.groupby('__COLUMN1')['CMEC_TOTAL'].sum().reset_index()
     custo_eq.columns = ['cod','CUSTO_MAT']
 
     eq = eq_h.merge(eq_info, on='cod').merge(custo_eq, on='cod', how='left')
@@ -125,7 +125,7 @@ def processar_dados(df_horas_raw, df_mov_raw, horas_mes):
         'horas_mes': horas_mes,
     }
 
-def gerar_html(d, nome, cargo):
+def gerar_html(d, nome, cargo, diag_pos, diag_neg):
     mes = d['mes_ano']
     periodo = f"{d['data_min']} – {d['data_max']}"
 
@@ -178,21 +178,6 @@ def gerar_html(d, nome, cargo):
     alert_occ = ''
     if d['occ_media'] > 100:
         alert_occ = f'<div class="alert red"><strong>✘ Atenção:</strong> Todos os {d["total_tec"]} técnicos ultrapassaram a jornada de {d["horas_mes"]}h. Total de {d["excedente_total"]}h excedentes — demanda real acima da capacidade nominal.</div>'
-
-    diag_pos = ''
-    diag_neg = ''
-    if d['pm_pct'] >= 50:
-        diag_pos += f'<div class="diag-item"><div class="diag-dot dot-green"></div><span>{d["pm_pct"]}% das horas em manutenção preventiva demonstra comprometimento com o plano mesmo sob pressão de corretivas.</span></div>'
-    diag_pos += f'<div class="diag-item"><div class="diag-dot dot-green"></div><span>{d["total_os"]} OS gerenciadas por {d["total_tec"]} técnicos no mês — alta produtividade operacional.</span></div>'
-    if d['excedente_total'] == 0:
-        diag_pos += f'<div class="diag-item"><div class="diag-dot dot-green"></div><span>Equipe dentro da capacidade nominal de {d["horas_mes"]}h — sem horas excedentes.</span></div>'
-
-    if d['cm_pct'] > 25:
-        diag_neg += f'<div class="diag-item"><div class="diag-dot dot-red"></div><span>{d["cm_pct"]}% de corretiva é acima do ideal (≤25%). Equipamentos críticos operam com PM insuficiente.</span></div>'
-    if d['excedente_total'] > 0:
-        diag_neg += f'<div class="diag-item"><div class="diag-dot dot-red"></div><span>Todos os técnicos ultrapassaram {d["horas_mes"]}h. Total de {d["excedente_total"]}h excedentes — sem margem para emergências.</span></div>'
-    if d['pm_pct'] < 60:
-        diag_neg += f'<div class="diag-item"><div class="diag-dot dot-yellow"></div><span>Preventiva abaixo da meta de 60% ({d["pm_pct"]}%). Elevar gradualmente nos próximos meses.</span></div>'
 
     html = f"""<!DOCTYPE html>
 <html lang="pt-BR">
@@ -407,40 +392,85 @@ new Chart(document.getElementById('chartSetor'), {{
     return html
 
 if file_horas and file_mov:
-    if st.button("⚙️ Gerar Relatório"):
-        with st.spinner("Processando dados..."):
+    if st.button("⚙️ Processar Arquivos"):
+        with st.spinner("Lendo dados..."):
             try:
                 df_h = pd.read_excel(file_horas)
                 df_m = pd.read_excel(file_mov)
-                dados = processar_dados(df_h, df_m, horas_mes)
-                html  = gerar_html(dados, nome_responsavel, cargo_responsavel)
+                st.session_state.dados = processar_dados(df_h, df_m, horas_mes)
 
-                st.success(f"✅ Relatório gerado! **{dados['mes_ano']}** · {dados['total_h']}h · {dados['total_os']} OS · {dados['total_tec']} técnicos")
+                # Gera pontos de diagnóstico iniciais
+                d = st.session_state.dados
+                pos = []
+                neg = []
+                if d['pm_pct'] >= 50:
+                    pos.append(f"{d['pm_pct']}% das horas em manutenção preventiva demonstra comprometimento com o plano mesmo sob pressão de corretivas.")
+                pos.append(f"{d['total_os']} OS gerenciadas por {d['total_tec']} técnicos no mês — alta produtividade operacional.")
+                if d['excedente_total'] == 0:
+                    pos.append(f"Equipe dentro da capacidade nominal de {d['horas_mes']}h — sem horas excedentes.")
+                if d['cm_pct'] > 25:
+                    neg.append(f"{d['cm_pct']}% de corretiva é acima do ideal (≤25%). Equipamentos críticos operam com PM insuficiente.")
+                if d['excedente_total'] > 0:
+                    neg.append(f"Todos os técnicos ultrapassaram {d['horas_mes']}h. Total de {d['excedente_total']}h excedentes — sem margem para emergências.")
+                if d['pm_pct'] < 60:
+                    neg.append(f"Preventiva abaixo da meta de 60% ({d['pm_pct']}%). Elevar gradualmente nos próximos meses.")
 
-                col1, col2, col3 = st.columns(3)
-                with col1: st.metric("Preventiva", f"{dados['pm_pct']}%", f"{dados['pm_h']}h")
-                with col2: st.metric("Corretiva",  f"{dados['cm_pct']}%", f"{dados['cm_h']}h", delta_color="inverse")
-                with col3: st.metric("Ocupação",   f"{dados['occ_media']}%", f"+{dados['excedente_total']}h" if dados['excedente_total']>0 else "OK", delta_color="inverse" if dados['excedente_total']>0 else "normal")
-
-                st.divider()
-
-                mes_clean = dados['mes_ano'].replace(' ','_').replace('/','_')
-                b64 = base64.b64encode(html.encode('utf-8')).decode()
-                st.markdown(
-                    f'<a href="data:text/html;base64,{b64}" download="Fechamento_Manutencao_{mes_clean}.html">'
-                    f'<button style="background:#1a3a5c;color:white;border:none;padding:12px 32px;border-radius:5px;font-size:15px;font-weight:600;cursor:pointer;width:100%;">⬇️ Baixar Relatório HTML</button></a>',
-                    unsafe_allow_html=True
-                )
-
-                st.divider()
-                st.markdown("**Pré-visualização:**")
-                st.components.v1.html(html, height=600, scrolling=True)
-
+                st.session_state.diag_pos = "\n".join(pos)
+                st.session_state.diag_neg = "\n".join(neg)
             except Exception as e:
                 st.error(f"Erro ao processar: {e}")
                 st.exception(e)
+
+    if 'dados' in st.session_state:
+        dados = st.session_state.dados
+        st.success(f"✅ **{dados['mes_ano']}** · {dados['total_h']}h · {dados['total_os']} OS · {dados['total_tec']} técnicos")
+
+        col1, col2, col3 = st.columns(3)
+        with col1: st.metric("Preventiva", f"{dados['pm_pct']}%", f"{dados['pm_h']}h")
+        with col2: st.metric("Corretiva",  f"{dados['cm_pct']}%", f"{dados['cm_h']}h", delta_color="inverse")
+        with col3: st.metric("Ocupação",   f"{dados['occ_media']}%", f"+{dados['excedente_total']}h" if dados['excedente_total']>0 else "OK", delta_color="inverse" if dados['excedente_total']>0 else "normal")
+
+        st.divider()
+
+        # ── DIAGNÓSTICO EDITÁVEL ──────────────────────────────────────────
+        st.markdown("**✏️ Diagnóstico Estratégico — edite antes de gerar**")
+        st.caption("Cada linha = um ponto. Deixe a linha em branco para remover. Adicione novas linhas para incluir.")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("🟢 **Pontos Positivos**")
+            pos_text = st.text_area("positivos", value=st.session_state.get('diag_pos',''),
+                                    height=160, label_visibility="collapsed")
+        with col2:
+            st.markdown("🔴 **Pontos Críticos**")
+            neg_text = st.text_area("criticos", value=st.session_state.get('diag_neg',''),
+                                    height=160, label_visibility="collapsed")
+
+        st.divider()
+
+        if st.button("📄 Gerar Relatório HTML"):
+            diag_pos_final = [l for l in pos_text.split("\n") if l.strip()]
+            diag_neg_final = [l for l in neg_text.split("\n") if l.strip()]
+
+            # Monta HTML do diagnóstico com os textos editados
+            diag_pos_html = ''.join(f'<div class="diag-item"><div class="diag-dot dot-green"></div><span>{l}</span></div>' for l in diag_pos_final)
+            diag_neg_html = ''.join(f'<div class="diag-item"><div class="diag-dot dot-red"></div><span>{l}</span></div>' for l in diag_neg_final)
+
+            html = gerar_html(dados, nome_responsavel, cargo_responsavel, diag_pos_html, diag_neg_html)
+
+            mes_clean = dados['mes_ano'].replace(' ','_').replace('/','_')
+            b64 = base64.b64encode(html.encode('utf-8')).decode()
+            st.markdown(
+                f'<a href="data:text/html;base64,{b64}" download="Fechamento_Manutencao_{mes_clean}.html">'
+                f'<button style="background:#1a3a5c;color:white;border:none;padding:12px 32px;border-radius:5px;font-size:15px;font-weight:600;cursor:pointer;width:100%;">⬇️ Baixar Relatório HTML</button></a>',
+                unsafe_allow_html=True
+            )
+            st.divider()
+            st.markdown("**Pré-visualização:**")
+            st.components.v1.html(html, height=600, scrolling=True)
+
 else:
     st.info("⬆️ Faça upload dos dois arquivos Excel acima para habilitar a geração do relatório.")
 
 st.divider()
-st.caption("Gerador de Fechamento de Manutenção · Desenvolvido com Andrei")
+st.caption("Gerador de Fechamento de Manutenção · Desenvolvido com Claude")
