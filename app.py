@@ -76,7 +76,7 @@ def processar_dados(df_horas_raw, df_mov_raw, horas_mes, valor_hora):
     total_h   = df['UTT'].sum()
     total_os  = df['P_ORDEM'].nunique()
     total_tec = df['NP'].nunique()
-    total_mat = df_custo['CME_TOTAL'].sum()
+    total_mat = df_custo['CMEC_TOTAL'].sum()
     cap_total = total_tec * horas_mes
 
     tipo_h = df.groupby('TIPO')['UTT'].sum()
@@ -104,7 +104,7 @@ def processar_dados(df_horas_raw, df_mov_raw, horas_mes, valor_hora):
 
     eq_h     = df.groupby('cod')['UTT'].sum().reset_index()
     eq_info  = df.drop_duplicates('cod')[['cod','DESCRICAO','TIPO']]
-    custo_eq = df_custo.groupby('__COLUMN1')['CME_TOTAL'].sum().reset_index()
+    custo_eq = df_custo.groupby('__COLUMN1')['CMEC_TOTAL'].sum().reset_index()
     custo_eq.columns = ['cod','CUSTO_MAT']
     eq = eq_h.merge(eq_info, on='cod').merge(custo_eq, on='cod', how='left')
     eq['CUSTO_MAT'] = eq['CUSTO_MAT'].fillna(0)
