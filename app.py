@@ -473,4 +473,4 @@ else:
     st.info("⬆️ Faça upload dos dois arquivos Excel acima para habilitar a geração do relatório.")
 
 st.divider()
-st.caption("Gerador de Fechamento de Manutenção · Desenvolvido com Claude")
+st.caption("Gerador de Fechamento de Manutenção · Desenvolvido com Andrei")
